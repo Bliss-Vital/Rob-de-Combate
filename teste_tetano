@@ -1,0 +1,84 @@
+#include <PS4Controller.h>
+
+
+// Configuração dos pinos do L298N
+#define IN1 18
+#define IN2 19
+#define ENA 5
+#define IN3 22
+#define IN4 21
+#define ENB 23
+
+// Variáveis de controle
+unsigned long lastPacketTime = 0;
+const unsigned long failsafeTimeout = 3000; // 3 segundo sem conexão
+
+void setup() {
+  Serial.begin(115200);
+
+  // Configuração dos pinos do motor
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(ENA, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+  pinMode(ENB, OUTPUT);
+
+  // Configuração PWM
+  ledcSetup(0, 30000, 8); // Canal 0 para ENA
+  ledcAttachPin(ENA, 0);
+  ledcSetup(1, 30000, 8); // Canal 1 para ENB
+  ledcAttachPin(ENB, 1);
+
+  // Inicialização do controle PS4
+  PS4.begin("18:1d:ea:f4:4c:97"); // Coloque o MAC do seu controle
+  Serial.println("Aguardando conexão do controle...");
+}
+
+void loop() {
+  if (PS4.isConnected()) {
+    lastPacketTime = millis();
+
+    // Leitura dos joysticks
+    int move = map(PS4.LStickY(), -127, 127, -255, 255);  // Frente e trás
+    int turn = map(PS4.RStickX(), -127, 127, -255, 255);  // Curva esquerda e direita
+
+    // Cálculo das velocidades dos motores
+    int speedLeft = constrain(move + turn, -255, 255);
+    int speedRight = constrain(move - turn, -255, 255);
+
+    // Controle do motor esquerdo
+    if (speedLeft > 0) {
+      digitalWrite(IN1, HIGH);
+      digitalWrite(IN2, LOW);
+    } else if (speedLeft < 0) {
+      digitalWrite(IN1, LOW);
+      digitalWrite(IN2, HIGH);
+    } else {
+      digitalWrite(IN1, LOW);
+      digitalWrite(IN2, LOW);
+    }
+    ledcWrite(0, abs(speedLeft));
+
+    // Controle do motor direito
+    if (speedRight > 0) {
+      digitalWrite(IN3, HIGH);
+      digitalWrite(IN4, LOW);
+    } else if (speedRight < 0) {
+      digitalWrite(IN3, LOW);
+      digitalWrite(IN4, HIGH);
+    } else {
+      digitalWrite(IN3, LOW);
+      digitalWrite(IN4, LOW);
+    }
+    ledcWrite(1, abs(speedRight));
+
+    // Failsafe manual com botão Options
+    if (PS4.Options()) {
+      //emergencyStop();
+    }
+  } else {
+    // Ativa failsafe após 1 segundo sem conexão
+    if (millis() - lastPacketTime > failsafeTimeout) {
+      emergencyStop();
+    }
